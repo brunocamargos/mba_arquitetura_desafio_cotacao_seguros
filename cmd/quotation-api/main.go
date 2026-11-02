@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/cache"
 	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/partner"
 	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/platform"
 	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/quotation"
@@ -29,8 +30,16 @@ func main() {
 		log.Fatalf("telemetry: %v", err)
 	}
 
+	guard := partner.NewGuard(partner.NewClient(), cfg.Partners, partner.BreakerSettings{
+		ConsecutiveFailures: cfg.Resilience.BreakerConsecutiveFailures,
+		OpenFor:             cfg.Resilience.BreakerOpenFor,
+		HalfOpenRequests:    cfg.Resilience.BreakerHalfOpenRequests,
+	})
+	store := cache.NewRedis(cfg.Resilience.RedisAddr)
+	defer func() { _ = store.Close() }()
+
 	api := quotation.NewAPI(
-		quotation.NewService(cfg.Partners, partner.NewClient()),
+		quotation.NewResilientService(cfg.Partners, guard, store, cfg.Resilience.CacheTTL),
 		cfg.Tenants,
 	)
 

@@ -62,7 +62,27 @@ type partnerRequest struct {
 }
 
 type Response struct {
-	TenantID  string          `json:"tenant_id"`
-	Quotes    []partner.Quote `json:"quotes"`
-	ElapsedMs int64           `json:"elapsed_ms"`
+	TenantID  string     `json:"tenant_id"`
+	Quotes    []Proposal `json:"quotes"`
+	Degraded  bool       `json:"degraded"`
+	Missing   []Missing  `json:"missing,omitempty"`
+	ElapsedMs int64      `json:"elapsed_ms"`
+}
+
+type Source string
+
+const (
+	SourcePartner Source = "partner"
+	SourceCache   Source = "cache"
+)
+
+type Proposal struct {
+	partner.Quote
+	Source     Source `json:"source"`
+	AgeSeconds int64  `json:"age_seconds"`
+}
+
+type Missing struct {
+	Partner string       `json:"partner"`
+	Reason  partner.Kind `json:"reason"`
 }

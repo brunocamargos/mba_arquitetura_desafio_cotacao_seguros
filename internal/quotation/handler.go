@@ -11,6 +11,11 @@ import (
 
 const TenantHeader = "X-Tenant-Id"
 
+type noQuotesBody struct {
+	Message string    `json:"error"`
+	Missing []Missing `json:"missing"`
+}
+
 const requestLimit = 1 << 20
 
 type API struct {
@@ -70,6 +75,12 @@ func (a *API) quote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) respondPartnerFailure(w http.ResponseWriter, err error) {
+	var none *NoQuotesError
+	if errors.As(err, &none) {
+		platform.WriteJSON(w, http.StatusServiceUnavailable, noQuotesBody{Message: none.Error(), Missing: none.Missing})
+		return
+	}
+
 	var failure *partner.Error
 	if errors.As(err, &failure) {
 		platform.WriteJSON(w, http.StatusBadGateway, platform.ErrorBody{

@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -12,6 +14,16 @@ type Config struct {
 	Partners  []Partner
 	Tenants   []string
 	Telemetry Telemetry
+
+	Resilience Resilience
+}
+
+type Resilience struct {
+	BreakerConsecutiveFailures uint32
+	BreakerOpenFor             time.Duration
+	BreakerHalfOpenRequests    uint32
+	CacheTTL                   time.Duration
+	RedisAddr                  string
 }
 
 type Partner struct {
@@ -48,7 +60,38 @@ func LoadConfig(env func(string) string) (Config, error) {
 	if cfg.Telemetry, err = parseTelemetry(env); err != nil {
 		return Config{}, err
 	}
+	if cfg.Resilience, err = parseResilience(env); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+func parseResilience(env func(string) string) (Resilience, error) {
+	values := map[string]int{
+		"BREAKER_CONSECUTIVE_FAILURES": 5,
+		"BREAKER_OPEN_SECONDS":         10,
+		"BREAKER_HALF_OPEN_REQUESTS":   2,
+		"CACHE_TTL_SECONDS":            300,
+	}
+	for key := range values {
+		raw := env(key)
+		if raw == "" {
+			continue
+		}
+		value, err := strconv.Atoi(raw)
+		if err != nil || value <= 0 {
+			return Resilience{}, fmt.Errorf("%s: %q is not a positive integer", key, raw)
+		}
+		values[key] = value
+	}
+
+	return Resilience{
+		BreakerConsecutiveFailures: uint32(values["BREAKER_CONSECUTIVE_FAILURES"]),
+		BreakerOpenFor:             time.Duration(values["BREAKER_OPEN_SECONDS"]) * time.Second,
+		BreakerHalfOpenRequests:    uint32(values["BREAKER_HALF_OPEN_REQUESTS"]),
+		CacheTTL:                   time.Duration(values["CACHE_TTL_SECONDS"]) * time.Second,
+		RedisAddr:                  text(env, "REDIS_ADDR", "localhost:6379"),
+	}, nil
 }
 
 func parseTelemetry(env func(string) string) (Telemetry, error) {
