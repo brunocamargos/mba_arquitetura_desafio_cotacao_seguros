@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"time"
 
 	"github.com/GuilhermeOliveira591/mba_arquitetura_desafio_cotacao_seguros/internal/platform"
 )
@@ -24,8 +26,13 @@ type Client struct {
 	http *http.Client
 }
 
+const Timeout = 2 * time.Second
+
 func NewClient() *Client {
-	return &Client{http: &http.Client{Transport: platform.InstrumentTransport(http.DefaultTransport)}}
+	return &Client{http: &http.Client{
+		Timeout:   Timeout,
+		Transport: platform.InstrumentTransport(http.DefaultTransport),
+	}}
 }
 
 const responseLimit = 1 << 20
@@ -44,7 +51,11 @@ func (c *Client) Quote(ctx context.Context, p platform.Partner, request any) (Qu
 
 	response, err := c.http.Do(req)
 	if err != nil {
-		return Quote{}, &Error{Partner: p.Name, Reason: err.Error()}
+		failure := &Error{Partner: p.Name, Reason: err.Error()}
+		if os.IsTimeout(err) {
+			failure.Kind = KindTimeout
+		}
+		return Quote{}, failure
 	}
 	defer func() { _ = response.Body.Close() }()
 
@@ -66,10 +77,19 @@ func (c *Client) Quote(ctx context.Context, p platform.Partner, request any) (Qu
 	return quote, nil
 }
 
+type Kind string
+
+const (
+	KindUnavailable Kind = "unavailable"
+	KindTimeout     Kind = "timeout"
+	KindCircuitOpen Kind = "circuit_open"
+)
+
 type Error struct {
 	Partner string
 	Status  int
 	Reason  string
+	Kind    Kind
 }
 
 func (e *Error) Error() string {

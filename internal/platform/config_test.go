@@ -3,6 +3,7 @@ package platform
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 func env(pairs map[string]string) func(string) string {
@@ -120,5 +121,29 @@ func TestInvalidConfigFails(t *testing.T) {
 				t.Fatalf("invalid configuration (%v) was accepted", vars)
 			}
 		})
+	}
+}
+
+func TestResilienceDefaultsAreTheOnesDefendedInTheSAD(t *testing.T) {
+	cfg, err := LoadConfig(env(nil))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	want := Resilience{
+		BreakerConsecutiveFailures: 5,
+		BreakerOpenFor:             10 * time.Second,
+		BreakerHalfOpenRequests:    2,
+		CacheTTL:                   300 * time.Second,
+		RedisAddr:                  "localhost:6379",
+	}
+	if cfg.Resilience != want {
+		t.Fatalf("resilience %+v, want %+v", cfg.Resilience, want)
+	}
+}
+
+func TestResilienceRejectsAnInvalidValue(t *testing.T) {
+	if _, err := LoadConfig(env(map[string]string{"CACHE_TTL_SECONDS": "0"})); err == nil {
+		t.Fatal("a TTL of zero was accepted")
 	}
 }
